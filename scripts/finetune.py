@@ -120,7 +120,7 @@ def main(_):
 
     pretrained_model = CrossFormerModel.load_pretrained(
         FLAGS.config.pretrained_path,
-        step=FLAGS.config.pretrained_step,
+        # step=FLAGS.config.pretrained_step,
     )
     flat_config = flax.traverse_util.flatten_dict(
         pretrained_model.config, keep_empty_nodes=True
@@ -219,7 +219,7 @@ def main(_):
         save_dir = tf.io.gfile.join(
             FLAGS.config.save_dir,
             FLAGS.config.wandb.project,
-            FLAGS.config.wandb.group or "",
+            '',
             wandb_id,
         )
         wandb.config.update(dict(save_dir=save_dir), allow_val_change=True)

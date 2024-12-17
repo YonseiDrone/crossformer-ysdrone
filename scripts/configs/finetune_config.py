@@ -15,24 +15,24 @@ def get_config():
     task = "multimodal"
 
     # the name of the action head to finetune
-    head_name = "single_arm"
+    head_name = "nav"
 
     assert task in ["image_conditioned", "language_conditioned", "multimodal"]
     assert mode in ["full", "head_only"]
 
     # fill this in to configure data loading for your dataset.
     FINETUNING_KWARGS = dict(
-        name="bridge_dataset",
-        data_dir="",
-        image_obs_keys={"primary": "image_0"},
+        name="ysdrone_navigation",
+        data_dir="/home/jellyho/tensorflow_datasets",
+        image_obs_keys={"nav": "image"},
         proprio_obs_keys={},
         language_key="language_instruction",
         action_proprio_normalization_type="normal",
         # We want to avoid normalizing the gripper
-        action_normalization_mask=[True, True, True, True, True, True, False],
+        action_normalization_mask=[True, True],
         # standardize_fn is dynamically loaded from a file
         standardize_fn=ModuleSpec.create(
-            "crossformer.data.oxe.oxe_standardization_transforms:bridge_dataset_transform",
+            "crossformer.data.oxe.oxe_standardization_transforms:ysdrone_dataset_transform",
         ),
         # If the default data loading speed is too slow, try these:
         # "num_parallel_reads": 8,  # for reading from disk / GCS
@@ -40,33 +40,33 @@ def get_config():
     )
 
     # an example of how to add a new observation tokenizer and action head
-    UPDATE_CONFIG = dict(
-        model=dict(
-            observation_tokenizers=dict(
-                new_primary=ModuleSpec.create(
-                    ImageTokenizer,
-                    obs_stack_keys=["image_primary"],
-                    task_stack_keys=["image_primary"],
-                    task_film_keys=["language_instruction"],
-                    encoder=ModuleSpec.create(ResNet26FILM),
-                )
-            ),
-            heads=dict(
-                new_single_arm=ModuleSpec.create(
-                    L1ActionHead,
-                    action_horizon=4,
-                    action_dim=7,
-                    num_preds=7,
-                    pool_strategy="pass",
-                    readout_key="readout_new_single_arm",
-                    clip_pred=False,
-                    loss_weight=1.0,
-                    constrain_loss_dims=True,
-                ),
-            ),
-            readouts=dict(new_single_arm=4),
-        )
-    )
+    # UPDATE_CONFIG = dict(
+    #     model=dict(
+    #         observation_tokenizers=dict(
+    #             new_primary=ModuleSpec.create(
+    #                 ImageTokenizer,
+    #                 obs_stack_keys=["image_primary"],
+    #                 task_stack_keys=["image_primary"],
+    #                 task_film_keys=["language_instruction"],
+    #                 encoder=ModuleSpec.create(ResNet26FILM),
+    #             )
+    #         ),
+    #         heads=dict(
+    #             new_single_arm=ModuleSpec.create(
+    #                 L1ActionHead,
+    #                 action_horizon=4,
+    #                 action_dim=7,
+    #                 num_preds=7,
+    #                 pool_strategy="pass",
+    #                 readout_key="readout_new_single_arm",
+    #                 clip_pred=False,
+    #                 loss_weight=1.0,
+    #                 constrain_loss_dims=True,
+    #             ),
+    #         ),
+    #         readouts=dict(new_single_arm=4),
+    #     )
+    # )
 
     if mode == "full":
         frozen_keys = None
@@ -81,19 +81,17 @@ def get_config():
     config = dict(
         # update_config=UPDATE_CONFIG, # uncomment this line to add new observation tokenizer and action head
         pretrained_path="hf://rail-berkeley/crossformer",
-        pretrained_step=placeholder(int),
-        batch_size=256,
+        batch_size=128,
         shuffle_buffer_size=10000,
         num_steps=max_steps,
         log_interval=100,
         eval_interval=1000,
         save_interval=1000,
-        save_dir=placeholder(str),
+        save_dir='./run',
         seed=42,
         wandb=dict(
-            project="crossformer_finetune",
-            group=placeholder(str),
-            entity=placeholder(str),
+            project="crossformer_ysdrone",
+            entity='jellyho_',
         ),
         dataset_kwargs=FINETUNING_KWARGS,
         modality=task,
@@ -161,6 +159,7 @@ def get_config():
     frame_transform_kwargs = dict(
         resize_size={
             "primary": (224, 224),  # workspace (3rd person) camera is at 224x224
+            "nav": (224, 224),  # workspace (3rd person) camera is at 224x224
         },
         image_augment_kwargs=dict(
             primary=workspace_augment_kwargs,

@@ -33,6 +33,9 @@ METRIC_WAYPOINT_SPACING = {
     "tartan_drive": 0.72,
 }
 
+def ysdrone_dataset_transform(trajectory: Dict[str, Any]) -> Dict[str, Any]:
+    trajectory['action'] = trajectory['action']['navi']
+    return trajectory
 
 def bridge_dataset_transform(trajectory: Dict[str, Any]) -> Dict[str, Any]:
     # NOTE: this is not actually the official OXE copy of bridge, it is our own more up-to-date copy that you
@@ -1140,4 +1143,5 @@ OXE_STANDARDIZATION_TRANSFORMS = {
     "droid": droid_dataset_transform,
     "droid_wipe": droid_dataset_transform,
     "droid_flip_pot_upright": droid_dataset_transform,
+    "ysdrone_navigation" : ysdrone_dataset_transform
 }

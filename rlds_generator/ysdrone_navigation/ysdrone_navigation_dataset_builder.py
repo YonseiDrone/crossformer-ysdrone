@@ -8,7 +8,7 @@ import tensorflow_hub as hub
 import h5py
 
 
-class YsdroneNagivation(tfds.core.GeneratorBasedBuilder):
+class YsdroneNavigation(tfds.core.GeneratorBasedBuilder):
     """DatasetBuilder for example dataset."""
 
     VERSION = tfds.core.Version('1.0.0')
@@ -18,7 +18,6 @@ class YsdroneNagivation(tfds.core.GeneratorBasedBuilder):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._embed = hub.load("https://tfhub.dev/google/universal-sentence-encoder-large/5")
 
     def _info(self) -> tfds.core.DatasetInfo:
         """Dataset metadata (homepage, citation,...)."""
@@ -27,42 +26,21 @@ class YsdroneNagivation(tfds.core.GeneratorBasedBuilder):
                 'steps': tfds.features.Dataset({
                     'observation': tfds.features.FeaturesDict({
                         'image': tfds.features.Image(
-                            shape=(480, 640, 3),
+                            shape=(360, 480, 3),
                             dtype=np.uint8,
                             encoding_format='png',
                             doc='Main camera RGB observation.',
                         ),
                     }),
                     'action': tfds.features.FeaturesDict({
-                        'ee_pos': tfds.features.Tensor(
-                            shape=(7,),
-                            dtype=np.float64,
-                            doc='2x robot local joint',
-                        ),
-                        'joint_pos': tfds.features.Tensor(
-                            shape=(7,),
-                            dtype=np.float64,
-                            doc='2x robot local joint',
-                        ),
-                        'delta_ee': tfds.features.Tensor(
-                            shape=(7,),
-                            dtype=np.float64,
-                            doc='2x robot local joint',
-                        ),
-                        'delta_joint': tfds.features.Tensor(
-                            shape=(7,),
-                            dtype=np.float64,
-                            doc='2x robot delta joint',
+                        'navi': tfds.features.Tensor(
+                            shape=(2,),
+                            dtype=np.float32,
+                            doc='r, w',
                         ),
                     }),
                     'language_instruction': tfds.features.Text(
                         doc='Language Instruction.'
-                    ),
-                    'language_embedding': tfds.features.Tensor(
-                        shape=(512,),
-                        dtype=np.float32,
-                        doc='Kona language embedding. '
-                            'See https://tfhub.dev/google/universal-sentence-encoder-large/5'
                     ),
                 }),
                 'episode_metadata': tfds.features.FeaturesDict({
@@ -75,7 +53,7 @@ class YsdroneNagivation(tfds.core.GeneratorBasedBuilder):
     def _split_generators(self, dl_manager: tfds.download.DownloadManager):
         """Define data splits."""
         return {
-            'train': self._generate_examples(path='/home/shared/vla_benchmark/*/*.hdf5'),
+            'train': self._generate_examples(path='/home/jellyho/ysdrone_dataset/*.h5'),
         }
 
     def _generate_examples(self, path) -> Iterator[Tuple[str, Any]]:
@@ -84,45 +62,20 @@ class YsdroneNagivation(tfds.core.GeneratorBasedBuilder):
         def _parse_example(hdf5_path):
             # load raw data --> this should change for your dataset
             root = h5py.File(hdf5_path, 'r')
-            length =  root['/action/ee_pos'].shape[0]
-
-            ## Dataset is generated in 20Hz, I want to make it 5Hz.
-
-            nli = root['/metadata/language_instruction']
-            image = root['/observation/image']
-            # leftview_image = root['/observation/leftview_image']
-            joint_pos = root['/action/joint_pos']
-            ee_pos = root['/action/ee_pos']
-
-            ####### Important ################
-            delta_ee_right = np.zeros((length + 1, 7))
-            delta_ee_right[1:] = ee_pos[()]
-            delta_ee_right[0] = root['observation/ee_pos'][0]
-
-            hz = 20
-            shift = 20 // hz
-
-            delta_ee_right = delta_ee_right[shift:, :6] - delta_ee_right[:-shift, :6]
-            grp_right = ee_pos[shift:, 6]
-            # print('L', length, 'ee', delta_ee_right.shape[0])
-            # assemble episode --> here we're assuming demos so we set reward to 1 at the end
+            length =  root['/action'].shape[0]
+            nli = root['/language_instruction']
+            image = root['/observation']
+            navi = root['/action']
             episode = []
-            for i in range(length - shift):
-                language_embedding = self._embed([nli[i]])[0].numpy()
-                delta_ee = np.concatenate([delta_ee_right[i], np.array(grp_right[i]).reshape(1)])
+            for i in range(length):
                 episode.append({
                         'observation': {
                             'image': image[i],
-                            # 'leftview_image': leftview_image[i]
                         },
                         'action': {
-                            'ee_pos': ee_pos[i],
-                            'joint_pos': joint_pos[i],
-                            'delta_ee': delta_ee,
-                            'delta_joint': joint_pos[i + shift] - joint_pos[i],
+                            'navi': navi[i],
                         },
                         'language_instruction': nli[i],
-                        'language_embedding': language_embedding,
                     })
 
             # create output data sample
