@@ -9,7 +9,16 @@
 [Ria Doshi](https://www.linkedin.com/in/riadoshi/), [Homer Walke](https://homerwalke.com/), [Oier Mees](https://www.oiermees.com/), [Sudeep Dasari](https://sudeepdasari.github.io/), [Sergey Levine](https://people.eecs.berkeley.edu/~svlevine/)
 <hr style="border: 2px solid gray;"></hr>
 
-This repo contains code for training and finetuning CrossFormer. CrossFormer is a transformer-based robot policy trained on 900K robot trajectories across 20 different robot embodiments. Our codebase is built on the [Octo codebase](https://github.com/octo-models/octo).
+### This repo contains codes of using CrossFormer for Tello written during Yonsei Drone's AI Drone navigation project(24-2).
+
+In addtion to crossformer code, we added
+1. Tello demo collection code
+2. Tello demo replay code
+3. Tello demo RLDS conversion code
+4. Inference code for Tello
+5. Collected dataset
+
+This repo contains code for training and finetuning CrossFormer and **data collection, inference code for Tello**. CrossFormer is a transformer-based robot policy trained on 900K robot trajectories across 20 different robot embodiments. Our codebase is built on the [Octo codebase](https://github.com/octo-models/octo).
 
 ![CrossFormer model](docs/assets/teaser.jpg)
 

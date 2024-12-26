@@ -4,29 +4,16 @@ import cv2
 import numpy as np
 import jax
 import time
-import threading
 
 # Initialize and connect to the Tello drone
-# Start the video stream
-# drone.takeoff()   # Start flying
-
 drone = Tello()
 drone.connect()
-drone.streamon()  
-# Thread function to keep the drone active
-actions_ready = False  # Flag to indicate when the action is ready
+drone.streamon()
 
-# def keep_drone_active():
-#     while not actions_ready:
-#         drone.send_keepalive()
-#         time.sleep(1)  # Send this command every second
-# thread = threading.Thread(target=keep_drone_active)
-# thread.start()
-# # Start the thread to keep the drone active
-
-# Load the pre-trained model
+# Load the pretrained CrossFormer model
 start = time.time()
-model = CrossFormerModel.load_pretrained("hf://rail-berkeley/crossformer")
+model = CrossFormerModel.load_pretrained("/home/jeanho/text_100000/text_100000")
+unnorm = model.dataset_statistics["action"]
 
 # Create navigation task
 task = model.create_tasks(texts=["navigate forward"])
@@ -34,11 +21,20 @@ observation = {
     "image_nav": np.random.randint(0, 256, (1, 1, 224, 224, 3), dtype=np.uint8) / 255.0,
     "timestep_pad_mask": np.array([[True]]),
 }
-action = model.sample_actions(observation, task, head_name="nav", rng=jax.random.PRNGKey(0))
-print('crossformer loaded', time.time() - start)
-start = time.time()
-drone.takeoff()
+key = jax.random.PRNGKey(0)
+action = model.sample_actions(observation, task, head_name="nav", unnormalization_statistics=unnorm, rng=key)
+print('CrossFormer loaded in:', time.time() - start)
 
+# Initialize video writer for recording
+video_writer = None
+frame_width, frame_height = 224, 224  # Match the resized frame dimensions
+output_filename = "tello_navigation.avi"
+video_writer = cv2.VideoWriter(
+    output_filename, cv2.VideoWriter_fourcc(*'XVID'), 4, (frame_width, frame_height)
+)
+
+# Take off
+to = False
 try:
     frequency = 4  # 4Hz frequency
     delta_t = 1 / frequency  # Time interval in seconds (0.25 sec)
@@ -47,7 +43,9 @@ try:
         # Capture and preprocess the frame
         frame = drone.get_frame_read().frame
         frame = cv2.resize(frame, (224, 224))  # Resize to match model input
-        # frame = frame / 255.0  # Normalize pixel values
+        frame_preserved = frame.copy()  # Preserve the original frame for display
+
+        # Normalize and prepare the input frame
         frame = np.expand_dims(frame, axis=0)  # Add batch dimension
         frame = np.expand_dims(frame, axis=0)  # Add time-step dimension
 
@@ -59,42 +57,79 @@ try:
 
         # Generate action from the model
         drone.send_rc_control(0, 0, 0, 0)
-        action = model.sample_actions(observation, task, head_name="nav", rng=jax.random.PRNGKey(0))
-        waypoints = action[0]  # Extract waypoints (e.g., 4x2 matrix)
+        action = model.sample_actions(
+            observation, task, head_name="nav",
+            unnormalization_statistics=unnorm, rng=key
+        )
+        if not to:
+            drone.takeoff()
+            to = True
+        # Extract waypoints (e.g., 4x2 matrix)
+        waypoints = action[0]
 
-        # Process waypoints at 4Hz
         for waypoint in waypoints:
+            original_frame = frame_preserved.copy()
             delta_x, delta_y = waypoint
+            delta_x = int(delta_x)
+            delta_y = int(delta_y)
 
-            # Map delta_x to forward/backward speed
-            alpha = 10.0
-            forward_speed = int(max(-alpha, min(alpha, int(delta_x * alpha))))  # Scale to range -100 to 100
+            # Draw an arrow on the frame to visualize the action
+            start_point = (224 // 2, 224 - 50)  # Arrow starts near the bottom center
+            arrow_length = 1  # Length of the arrow
 
-            # Map delta_y to yaw rate
-            yaw_rate = int(max(-alpha, min(alpha, int(delta_y * alpha))))  # Scale to range -100 to 100
+            # Calculate the endpoint of the arrow
+            end_point = (
+                int(start_point[0] + arrow_length * delta_y),
+                int(start_point[1] - arrow_length * delta_x),
+            )
+
+            # Draw the arrow
+            cv2.arrowedLine(
+                original_frame, start_point, end_point,
+                color=(0, 255, 0), thickness=1, tipLength=0.3
+            )
+
+            # Add text overlay for instructions and actions
+            action_text = f"Action - Forward/Backward: {delta_x}, Yaw: {delta_y}"
+            instruction_text = "Instruction: Navigate the hallway"
+
+            cv2.putText(
+                original_frame, action_text, (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.2, (255, 255, 255), 1
+            )
+            cv2.putText(
+                original_frame, instruction_text, (10, 60),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.2, (255, 255, 255), 1
+            )
+
+            # Write the frame to the video
+            video_writer.write(original_frame)
+
+            # Display the frame with the arrow and text
+            cv2.imshow("Tello Camera", original_frame)
 
             # Maintain constant altitude and no roll
             throttle = 0
             roll = 0
 
             # Send command to the drone
-            drone.send_rc_control(roll, forward_speed, throttle, yaw_rate)
+            drone.send_rc_control(roll, int(delta_x), throttle, int(delta_y))
+
+            # Exit on 'q' key press
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
 
             # Maintain 4Hz frequency
             time.sleep(delta_t)
-
-        # Display the live feed (optional)
-        cv2.imshow("Tello Camera", frame[0, 0])
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break  # Exit loop on 'q' key press
 
 except KeyboardInterrupt:
     print("Streaming stopped by user")
 
 finally:
     # Safely land and stop the video stream
-    actions_ready = True  # Signal thread to stop
     drone.send_rc_control(0, 0, 0, 0)  # Stop any movement before landing
     drone.land()
     drone.streamoff()
+    if video_writer:
+        video_writer.release()  # Release the video writer
     cv2.destroyAllWindows()

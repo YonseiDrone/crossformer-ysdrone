@@ -12,7 +12,7 @@ def get_config():
     mode = "full"
 
     # whether to finetune with image conditioning, language conditioning, or both
-    task = "multimodal"
+    task = "language_conditioned"
 
     # the name of the action head to finetune
     head_name = "nav"
@@ -75,7 +75,7 @@ def get_config():
     else:
         raise ValueError("Invalid mode")
 
-    max_steps = FieldReference(50000)
+    max_steps = FieldReference(100000)
     window_size = FieldReference(default=1)
 
     config = dict(
@@ -102,7 +102,7 @@ def get_config():
             learning_rate=dict(
                 name="cosine",
                 init_value=0.0,
-                peak_value=3e-4,
+                peak_value=1e-4,
                 warmup_steps=2000,
                 decay_steps=max_steps,
                 end_value=0.0,
